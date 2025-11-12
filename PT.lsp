@@ -7,8 +7,7 @@
   (setq f (open dcl_file "w"))
   (write-line "copy_object : dialog {" f)
   (write-line "  label = \"포장 TYPE\";" f)
-  (write-line "  : radio_row {" f)
-  (write-line "    key = \"main_group\";" f)
+  (write-line "  : row {" f)
   (write-line "    : column {" f)
   (write-line "      label = \"ASP\";" f)
   (write-line "      : radio_button { key = \"asp1\"; label = \"5-10-22\"; value = \"1\"; }" f)
@@ -33,13 +32,13 @@
   (write-line "      : radio_button { key = \"bike\"; label = \"도막-10-20\"; }" f)
   (write-line "    }" f)
   (write-line "    : column {" f)
-  (write-line "      label = \"직접작성\";" f)
+  (write-line "      label = \"직접작성(cm)\";" f)
   (write-line "      : radio_button { key = \"custom\"; label = \"[  ]-[  ]-[  ]\"; }" f)
   (write-line "    }" f)
   (write-line "  }" f)
   (write-line "  : row {" f)
   (write-line "    : text {" f)
-  (write-line "      label = \"직접작성 값:\";" f)
+  (write-line "      label = \"직접작성 값(cm):\";" f)
   (write-line "    }" f)
   (write-line "    : edit_box {" f)
   (write-line "      key = \"custom_input1\";" f)
@@ -166,6 +165,7 @@
                (setq new_obj1 (copy-object-y-down obj 0.2))
                (setq last_obj (copy-object-y-down new_obj1 0.2))
                (draw-vertical-lines obj last_obj)
+               (add-text-between-objects obj new_obj1 "CON'C")
               )
               
               ;; 보도 옵션 1: 6-4-10 (0.06, 0.04, 0.1 순차적으로)
@@ -198,15 +198,17 @@
                ;; 그 위치에서 0.2 아래 복사
                (setq last_obj (copy-object-y-down new_obj1 0.2))
                (draw-vertical-lines obj last_obj)
+               (add-text-between-objects obj new_obj1 "자전거도로")
               )
               
-              ;; 직접작성
+              ;; 직접작성 (cm를 m로 변환)
               ((= option "custom")
                (if (and custom_val1 custom_val2 custom_val3)
                  (progn
-                   (setq dist1 (atof custom_val1))
-                   (setq dist2 (atof custom_val2))
-                   (setq dist3 (atof custom_val3))
+                   ;; cm를 m로 변환 (10cm = 0.1m)
+                   (setq dist1 (/ (atof custom_val1) 100.0))
+                   (setq dist2 (/ (atof custom_val2) 100.0))
+                   (setq dist3 (/ (atof custom_val3) 100.0))
                    (if (and (> dist1 0) (> dist2 0) (> dist3 0))
                      (progn
                        (setq new_obj1 (copy-object-y-down obj dist1))
@@ -295,6 +297,38 @@
                       (vlax-safearray->list orig_end)
                       (vlax-safearray->list last_end)
                       "")
+           )
+         )
+      )
+    )
+  )
+)
+
+;; 두 객체 사이에 텍스트를 추가하는 함수
+(defun add-text-between-objects (top_obj bottom_obj text_string / top_pt bottom_pt mid_pt mid_x mid_y mid_z)
+  (if (and top_obj bottom_obj)
+    (vl-catch-all-apply
+      '(lambda ()
+         ;; 위쪽 객체의 시작점 가져오기
+         (if (vlax-property-available-p top_obj 'StartPoint)
+           (setq top_pt (vlax-safearray->list (vlax-get top_obj 'StartPoint)))
+         )
+         
+         ;; 아래쪽 객체의 시작점 가져오기
+         (if (vlax-property-available-p bottom_obj 'StartPoint)
+           (setq bottom_pt (vlax-safearray->list (vlax-get bottom_obj 'StartPoint)))
+         )
+         
+         ;; 중간점 계산
+         (if (and top_pt bottom_pt)
+           (progn
+             (setq mid_x (/ (+ (car top_pt) (car bottom_pt)) 2.0))
+             (setq mid_y (/ (+ (cadr top_pt) (cadr bottom_pt)) 2.0))
+             (setq mid_z (/ (+ (caddr top_pt) (caddr bottom_pt)) 2.0))
+             (setq mid_pt (list mid_x mid_y mid_z))
+             
+             ;; 텍스트 삽입
+             (command "_.text" "_J" "_MC" mid_pt "0.05" "0" text_string)
            )
          )
       )
