@@ -7,7 +7,7 @@
   (setq f (open dcl_file "w"))
   (write-line "copy_object : dialog {" f)
   (write-line "  label = \"포장 TYPE\";" f)
-  (write-line "  : row {" f)
+  (write-line "  : radio_row {" f)
   (write-line "    : column {" f)
   (write-line "      label = \"ASP\";" f)
   (write-line "      : radio_button { key = \"asp1\"; label = \"5-10-22\"; value = \"1\"; }" f)
