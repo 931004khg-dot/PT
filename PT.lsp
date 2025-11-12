@@ -249,103 +249,187 @@
 )
 
 ;; 객체를 Y축 아래로 복사하는 함수
-(defun copy-object-y-down (obj distance / new_obj offset)
+(defun copy-object-y-down (obj distance / new_obj offset result)
   (setq new_obj nil)
+  (princ (strcat "\n[DEBUG] copy-object-y-down 시작 - distance: " (rtos distance 2 3)))
   
-  (vl-catch-all-apply
-    '(lambda ()
-       (setq new_obj (vla-copy obj))
-       
-       ;; 이동 벡터 계산 (Y축 방향으로 -distance)
-       (setq offset (vlax-make-safearray vlax-vbDouble '(0 . 2)))
-       (vlax-safearray-put-element offset 0 0.0)
-       (vlax-safearray-put-element offset 1 (- distance))
-       (vlax-safearray-put-element offset 2 0.0)
-       
-       ;; 객체 이동
-       (vla-move new_obj 
-                 (vlax-3d-point '(0 0 0))
-                 (vlax-3d-point (list 0.0 (- distance) 0.0)))
+  (setq result
+    (vl-catch-all-apply
+      '(lambda ()
+         (princ "\n[DEBUG] vla-copy 시작")
+         (setq new_obj (vla-copy obj))
+         (princ (strcat "\n[DEBUG] 복사 완료 - new_obj: " (if new_obj "존재함" "nil")))
+         
+         ;; 이동 벡터 계산 (Y축 방향으로 -distance)
+         (setq offset (vlax-make-safearray vlax-vbDouble '(0 . 2)))
+         (vlax-safearray-put-element offset 0 0.0)
+         (vlax-safearray-put-element offset 1 (- distance))
+         (vlax-safearray-put-element offset 2 0.0)
+         (princ "\n[DEBUG] offset 생성 완료")
+         
+         ;; 객체 이동
+         (princ "\n[DEBUG] vla-move 시작")
+         (vla-move new_obj 
+                   (vlax-3d-point '(0 0 0))
+                   (vlax-3d-point (list 0.0 (- distance) 0.0)))
+         (princ "\n[DEBUG] 이동 완료")
+      )
     )
+  )
+  
+  (if (vl-catch-all-error-p result)
+    (princ (strcat "\n[ERROR] copy-object-y-down 오류: " (vl-catch-all-error-message result)))
+    (princ "\n[DEBUG] copy-object-y-down 정상 완료")
   )
   
   new_obj
 )
 
 ;; 원본 객체와 마지막 객체의 양 끝점을 연결하는 세로선을 그리는 함수
-(defun draw-vertical-lines (orig_obj last_obj / orig_start orig_end last_start last_end)
+(defun draw-vertical-lines (orig_obj last_obj / orig_start orig_end last_start last_end result 
+                            orig_start_list orig_end_list last_start_list last_end_list)
+  (princ "\n[DEBUG] draw-vertical-lines 시작")
+  (princ (strcat "\n[DEBUG] orig_obj: " (if orig_obj "존재함" "nil")))
+  (princ (strcat "\n[DEBUG] last_obj: " (if last_obj "존재함" "nil")))
+  
   (if (and orig_obj last_obj)
-    (vl-catch-all-apply
-      '(lambda ()
-         ;; 원본 객체의 시작점과 끝점 가져오기
-         (if (vlax-property-available-p orig_obj 'StartPoint)
-           (setq orig_start (vlax-get orig_obj 'StartPoint))
-         )
-         (if (vlax-property-available-p orig_obj 'EndPoint)
-           (setq orig_end (vlax-get orig_obj 'EndPoint))
-         )
-         
-         ;; 마지막 객체의 시작점과 끝점 가져오기
-         (if (vlax-property-available-p last_obj 'StartPoint)
-           (setq last_start (vlax-get last_obj 'StartPoint))
-         )
-         (if (vlax-property-available-p last_obj 'EndPoint)
-           (setq last_end (vlax-get last_obj 'EndPoint))
-         )
-         
-         ;; 세로선 그리기 (시작점 연결)
-         (if (and orig_start last_start)
-           (progn
-             (command "_.line" 
-                      (vlax-safearray->list orig_start)
-                      (vlax-safearray->list last_start)
-                      "")
-           )
-         )
-         
-         ;; 세로선 그리기 (끝점 연결)
-         (if (and orig_end last_end)
-           (progn
-             (command "_.line" 
-                      (vlax-safearray->list orig_end)
-                      (vlax-safearray->list last_end)
-                      "")
-           )
-         )
+    (progn
+      (setq result
+        (vl-catch-all-apply
+          '(lambda ()
+             ;; 원본 객체의 시작점과 끝점 가져오기
+             (princ "\n[DEBUG] 원본 객체 StartPoint 확인 중...")
+             (if (vlax-property-available-p orig_obj 'StartPoint)
+               (progn
+                 (setq orig_start (vlax-get orig_obj 'StartPoint))
+                 (setq orig_start_list (vlax-safearray->list orig_start))
+                 (princ (strcat "\n[DEBUG] 원본 시작점: " (vl-princ-to-string orig_start_list)))
+               )
+               (princ "\n[DEBUG] 원본 객체에 StartPoint 속성 없음")
+             )
+             
+             (princ "\n[DEBUG] 원본 객체 EndPoint 확인 중...")
+             (if (vlax-property-available-p orig_obj 'EndPoint)
+               (progn
+                 (setq orig_end (vlax-get orig_obj 'EndPoint))
+                 (setq orig_end_list (vlax-safearray->list orig_end))
+                 (princ (strcat "\n[DEBUG] 원본 끝점: " (vl-princ-to-string orig_end_list)))
+               )
+               (princ "\n[DEBUG] 원본 객체에 EndPoint 속성 없음")
+             )
+             
+             ;; 마지막 객체의 시작점과 끝점 가져오기
+             (princ "\n[DEBUG] 마지막 객체 StartPoint 확인 중...")
+             (if (vlax-property-available-p last_obj 'StartPoint)
+               (progn
+                 (setq last_start (vlax-get last_obj 'StartPoint))
+                 (setq last_start_list (vlax-safearray->list last_start))
+                 (princ (strcat "\n[DEBUG] 마지막 시작점: " (vl-princ-to-string last_start_list)))
+               )
+               (princ "\n[DEBUG] 마지막 객체에 StartPoint 속성 없음")
+             )
+             
+             (princ "\n[DEBUG] 마지막 객체 EndPoint 확인 중...")
+             (if (vlax-property-available-p last_obj 'EndPoint)
+               (progn
+                 (setq last_end (vlax-get last_obj 'EndPoint))
+                 (setq last_end_list (vlax-safearray->list last_end))
+                 (princ (strcat "\n[DEBUG] 마지막 끝점: " (vl-princ-to-string last_end_list)))
+               )
+               (princ "\n[DEBUG] 마지막 객체에 EndPoint 속성 없음")
+             )
+             
+             ;; 세로선 그리기 (시작점 연결)
+             (princ "\n[DEBUG] 세로선 그리기 시작 (시작점)")
+             (if (and orig_start_list last_start_list)
+               (progn
+                 (princ "\n[DEBUG] LINE 명령 실행 (시작점)")
+                 (command "_.line" orig_start_list last_start_list "")
+                 (princ "\n[DEBUG] 시작점 세로선 완료")
+               )
+               (princ "\n[DEBUG] 시작점 좌표가 없어서 세로선 생략")
+             )
+             
+             ;; 세로선 그리기 (끝점 연결)
+             (princ "\n[DEBUG] 세로선 그리기 시작 (끝점)")
+             (if (and orig_end_list last_end_list)
+               (progn
+                 (princ "\n[DEBUG] LINE 명령 실행 (끝점)")
+                 (command "_.line" orig_end_list last_end_list "")
+                 (princ "\n[DEBUG] 끝점 세로선 완료")
+               )
+               (princ "\n[DEBUG] 끝점 좌표가 없어서 세로선 생략")
+             )
+          )
+        )
+      )
+      
+      (if (vl-catch-all-error-p result)
+        (princ (strcat "\n[ERROR] draw-vertical-lines 오류: " (vl-catch-all-error-message result)))
+        (princ "\n[DEBUG] draw-vertical-lines 정상 완료")
       )
     )
+    (princ "\n[ERROR] draw-vertical-lines - 객체가 nil입니다")
   )
 )
 
 ;; 두 객체 사이에 텍스트를 추가하는 함수
-(defun add-text-between-objects (top_obj bottom_obj text_string / top_pt bottom_pt mid_pt mid_x mid_y mid_z)
+(defun add-text-between-objects (top_obj bottom_obj text_string / top_pt bottom_pt mid_pt mid_x mid_y mid_z result)
+  (princ (strcat "\n[DEBUG] add-text-between-objects 시작 - 텍스트: " text_string))
+  (princ (strcat "\n[DEBUG] top_obj: " (if top_obj "존재함" "nil")))
+  (princ (strcat "\n[DEBUG] bottom_obj: " (if bottom_obj "존재함" "nil")))
+  
   (if (and top_obj bottom_obj)
-    (vl-catch-all-apply
-      '(lambda ()
-         ;; 위쪽 객체의 시작점 가져오기
-         (if (vlax-property-available-p top_obj 'StartPoint)
-           (setq top_pt (vlax-safearray->list (vlax-get top_obj 'StartPoint)))
-         )
-         
-         ;; 아래쪽 객체의 시작점 가져오기
-         (if (vlax-property-available-p bottom_obj 'StartPoint)
-           (setq bottom_pt (vlax-safearray->list (vlax-get bottom_obj 'StartPoint)))
-         )
-         
-         ;; 중간점 계산
-         (if (and top_pt bottom_pt)
-           (progn
-             (setq mid_x (/ (+ (car top_pt) (car bottom_pt)) 2.0))
-             (setq mid_y (/ (+ (cadr top_pt) (cadr bottom_pt)) 2.0))
-             (setq mid_z (/ (+ (caddr top_pt) (caddr bottom_pt)) 2.0))
-             (setq mid_pt (list mid_x mid_y mid_z))
+    (progn
+      (setq result
+        (vl-catch-all-apply
+          '(lambda ()
+             ;; 위쪽 객체의 시작점 가져오기
+             (princ "\n[DEBUG] 위쪽 객체 StartPoint 확인 중...")
+             (if (vlax-property-available-p top_obj 'StartPoint)
+               (progn
+                 (setq top_pt (vlax-safearray->list (vlax-get top_obj 'StartPoint)))
+                 (princ (strcat "\n[DEBUG] 위쪽 시작점: " (vl-princ-to-string top_pt)))
+               )
+               (princ "\n[DEBUG] 위쪽 객체에 StartPoint 속성 없음")
+             )
              
-             ;; 텍스트 삽입
-             (command "_.text" "_J" "_MC" mid_pt "0.05" "0" text_string)
-           )
-         )
+             ;; 아래쪽 객체의 시작점 가져오기
+             (princ "\n[DEBUG] 아래쪽 객체 StartPoint 확인 중...")
+             (if (vlax-property-available-p bottom_obj 'StartPoint)
+               (progn
+                 (setq bottom_pt (vlax-safearray->list (vlax-get bottom_obj 'StartPoint)))
+                 (princ (strcat "\n[DEBUG] 아래쪽 시작점: " (vl-princ-to-string bottom_pt)))
+               )
+               (princ "\n[DEBUG] 아래쪽 객체에 StartPoint 속성 없음")
+             )
+             
+             ;; 중간점 계산
+             (if (and top_pt bottom_pt)
+               (progn
+                 (setq mid_x (/ (+ (car top_pt) (car bottom_pt)) 2.0))
+                 (setq mid_y (/ (+ (cadr top_pt) (cadr bottom_pt)) 2.0))
+                 (setq mid_z (/ (+ (caddr top_pt) (caddr bottom_pt)) 2.0))
+                 (setq mid_pt (list mid_x mid_y mid_z))
+                 (princ (strcat "\n[DEBUG] 중간점: " (vl-princ-to-string mid_pt)))
+                 
+                 ;; 텍스트 삽입
+                 (princ "\n[DEBUG] TEXT 명령 실행")
+                 (command "_.text" "_J" "_MC" mid_pt "0.05" "0" text_string)
+                 (princ "\n[DEBUG] 텍스트 삽입 완료")
+               )
+               (princ "\n[DEBUG] 좌표가 없어서 텍스트 삽입 생략")
+             )
+          )
+        )
+      )
+      
+      (if (vl-catch-all-error-p result)
+        (princ (strcat "\n[ERROR] add-text-between-objects 오류: " (vl-catch-all-error-message result)))
+        (princ "\n[DEBUG] add-text-between-objects 정상 완료")
       )
     )
+    (princ "\n[ERROR] add-text-between-objects - 객체가 nil입니다")
   )
 )
 
