@@ -1,5 +1,5 @@
 (defun C:PT (/ dcl_id dcl_file result option custom_val ss ent obj_list obj thickness sub_option 
-              custom_val1 custom_val2 custom_val3)
+              custom_val1 custom_val2 custom_val3 custom_text)
   
   ;; DCL 파일 자동 생성
   (setq dcl_file (strcat (getvar "ROAMABLEROOTPREFIX") "copy_object.dcl"))
@@ -57,6 +57,15 @@
   (write-line "    : edit_box {" f)
   (write-line "      key = \"custom_input3\";" f)
   (write-line "      edit_width = 8;" f)
+  (write-line "    }" f)
+  (write-line "  }" f)
+  (write-line "  : row {" f)
+  (write-line "    : text {" f)
+  (write-line "      label = \"TEXT:\";" f)
+  (write-line "    }" f)
+  (write-line "    : edit_box {" f)
+  (write-line "      key = \"custom_text\";" f)
+  (write-line "      edit_width = 30;" f)
   (write-line "    }" f)
   (write-line "  }" f)
   (write-line "  : row {" f)
@@ -120,6 +129,7 @@
   (action_tile "custom_input1" "(setq custom_val1 $value)")
   (action_tile "custom_input2" "(setq custom_val2 $value)")
   (action_tile "custom_input3" "(setq custom_val3 $value)")
+  (action_tile "custom_text" "(setq custom_text $value)")
   (action_tile "accept" "(setq result T)(done_dialog)")
   (action_tile "cancel" "(setq result nil)(done_dialog)")
   
@@ -230,6 +240,10 @@
                        (setq new_obj1 (copy-object-y-down obj dist1))
                        (setq new_obj2 (copy-object-y-down new_obj1 dist2))
                        (setq last_obj (copy-object-y-down new_obj2 dist3))
+                       ;; 사용자가 입력한 텍스트가 있으면 원본과 첫 복사본 사이에 삽입
+                       (if (and custom_text (> (strlen custom_text) 0))
+                         (add-text-between-objects obj new_obj1 custom_text)
+                       )
                      )
                      (alert "모든 값은 0보다 커야 합니다.")
                    )
