@@ -192,14 +192,25 @@
               
               ;; 자전거도로: 도막-10-20 (원본 두께 0.003, 0.1 아래 복사 두께 0, 다시 0.2 아래)
               ((= option "bike")
-               ;; 원본 객체 두께를 0.003으로 변경
-               (if (vlax-property-available-p obj 'Thickness)
-                 (vlax-put-property obj 'Thickness 0.003)
+               ;; 원본 객체 두께를 0.003으로 변경 (LWPOLYLINE은 ConstantWidth 사용)
+               (if (vlax-property-available-p obj 'ConstantWidth)
+                 (vlax-put-property obj 'ConstantWidth 0.003)
+                 ;; ConstantWidth가 없으면 Thickness 시도
+                 (if (vlax-property-available-p obj 'Thickness)
+                   (vlax-put-property obj 'Thickness 0.003)
+                 )
                )
                ;; 0.1 아래 복사 (두께 0)
                (setq new_obj1 (copy-object-y-down obj 0.1))
-               (if (and new_obj1 (vlax-property-available-p new_obj1 'Thickness))
-                 (vlax-put-property new_obj1 'Thickness 0.0)
+               (if new_obj1
+                 (progn
+                   (if (vlax-property-available-p new_obj1 'ConstantWidth)
+                     (vlax-put-property new_obj1 'ConstantWidth 0.0)
+                     (if (vlax-property-available-p new_obj1 'Thickness)
+                       (vlax-put-property new_obj1 'Thickness 0.0)
+                     )
+                   )
+                 )
                )
                ;; 그 위치에서 0.2 아래 복사
                (setq last_obj (copy-object-y-down new_obj1 0.2))
@@ -319,8 +330,6 @@
                                   orig_layer orig_color old_osmode
                                   test_point_top test_point_bottom top_intersect bottom_intersect
                                   top_y bottom_y)
-  (princ (strcat "\n텍스트 삽입 시작: " text_string))
-  
   (if (and top_obj bottom_obj)
     (progn
       ;; 원본 객체의 레이어와 색상 가져오기
@@ -375,13 +384,9 @@
                                     )))
       
       ;; 3. 원본 객체와 세로선의 교차점 찾기 (vlax-curve 함수 사용)
-      (princ "\n[DEBUG] 교차점 계산 중...")
-      
       ;; 중간 X 좌표에서 가장 가까운 점 찾기 (원본 객체)
       (setq test_point_top (list mid_x (cadr top_left) mid_z))
       (setq top_intersect (vlax-curve-getClosestPointTo top_obj test_point_top))
-      
-      (princ (strcat "\n[DEBUG] 원본 객체 교차점: " (vl-princ-to-string top_intersect)))
       
       ;; 첫 복사본의 좌표 가져오기
       (setq bottom_coords (get-all-vertices bottom_obj))
@@ -391,18 +396,12 @@
       (setq test_point_bottom (list mid_x (cadr bottom_left) mid_z))
       (setq bottom_intersect (vlax-curve-getClosestPointTo bottom_obj test_point_bottom))
       
-      (princ (strcat "\n[DEBUG] 첫 복사본 교차점: " (vl-princ-to-string bottom_intersect)))
-      
       ;; 4. 두 교차점의 중간 Y 좌표 계산
       (if (and top_intersect bottom_intersect)
         (progn
           (setq top_y (cadr top_intersect))
           (setq bottom_y (cadr bottom_intersect))
           (setq mid_y (/ (+ top_y bottom_y) 2.0))
-          
-          (princ (strcat "\n[DEBUG] 원본 Y: " (rtos top_y 2 4)))
-          (princ (strcat "\n[DEBUG] 복사본 Y: " (rtos bottom_y 2 4)))
-          (princ (strcat "\n[DEBUG] 텍스트 Y (중간): " (rtos mid_y 2 4)))
           
           ;; 5. 원본 객체의 기울기 계산
           (setq angle (atan (- (cadr top_right) (cadr top_left))
@@ -422,13 +421,19 @@
                      (cons 73 2)
                    ))
           
-          (princ "\n[DEBUG] 텍스트 삽입 완료 - 임시선 유지됨")
+          ;; 7. 임시 선들 삭제
+          (entdel temp_line)
+          (entdel vertical_line)
+          
+          (princ "\n텍스트 삽입 완료")
         )
-        (princ "\n오류: 교차점을 찾을 수 없습니다")
+        (progn
+          ;; 오류 시에도 임시 선들 삭제
+          (if temp_line (entdel temp_line))
+          (if vertical_line (entdel vertical_line))
+          (princ "\n오류: 교차점을 찾을 수 없습니다")
+        )
       )
-      
-      ;; 7. 임시 선들 삭제하지 않음 (디버그용)
-      (princ "\n[DEBUG] 임시 선들(가로선, 세로선) 유지됨")
       
       ;; OSNAP 복원
       (setvar "OSMODE" old_osmode)
