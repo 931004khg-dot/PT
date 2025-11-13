@@ -309,76 +309,14 @@
   pt_list
 )
 
-;; 수직선과 LWPOLYLINE의 교차점을 찾는 함수 (곡선은 직선 근사)
-(defun find-y-at-x (obj target_x / coords pt_list i n pt1 pt2 x1 y1 x2 y2 
-                     result_y z_val)
-  
-  ;; 정점 좌표 가져오기
-  (setq coords (vlax-safearray->list (vlax-variant-value (vlax-get-property obj 'Coordinates))))
-  (setq z_val (if (vlax-property-available-p obj 'Elevation)
-                (vlax-get-property obj 'Elevation)
-                0.0))
-  
-  ;; 정점 리스트 생성
-  (setq pt_list '())
-  (setq i 0)
-  (while (< i (length coords))
-    (setq pt_list (append pt_list (list (list (nth i coords) (nth (+ i 1) coords) z_val))))
-    (setq i (+ i 2))
-  )
-  
-  ;; 각 세그먼트를 확인하여 target_x가 포함되는 세그먼트 찾기
-  (setq result_y nil)
-  (setq i 0)
-  (setq n (- (length pt_list) 1))
-  
-  (while (and (< i n) (not result_y))
-    (setq pt1 (nth i pt_list))
-    (setq pt2 (nth (+ i 1) pt_list))
-    (setq x1 (car pt1))
-    (setq y1 (cadr pt1))
-    (setq x2 (car pt2))
-    (setq y2 (cadr pt2))
-    
-    ;; target_x가 이 세그먼트의 X 범위에 포함되는지 확인
-    (if (and (<= (min x1 x2) target_x) (<= target_x (max x1 x2)))
-      (progn
-        ;; 선형 보간 (곡선도 직선으로 근사)
-        (if (not (equal x1 x2 0.0001))
-          (setq result_y (+ y1 (* (- y2 y1) (/ (- target_x x1) (- x2 x1)))))
-          (setq result_y (/ (+ y1 y2) 2.0))
-        )
-      )
-    )
-    (setq i (1+ i))
-  )
-  
-  ;; 못 찾았으면 양 끝점 중간값 사용
-  (if (not result_y)
-    (progn
-      (setq pt1 (car pt_list))
-      (setq pt2 (last pt_list))
-      (setq x1 (car pt1))
-      (setq y1 (cadr pt1))
-      (setq x2 (car pt2))
-      (setq y2 (cadr pt2))
-      (if (not (equal x1 x2 0.0001))
-        (setq result_y (+ y1 (* (- y2 y1) (/ (- target_x x1) (- x2 x1)))))
-        (setq result_y (/ (+ y1 y2) 2.0))
-      )
-    )
-  )
-  
-  result_y
-)
-
 ;; 선택한 객체와 첫 번째 복사 객체 사이에 텍스트를 추가하는 함수
 (defun add-text-between-objects (top_obj bottom_obj text_string / 
                                   top_coords bottom_coords
-                                  top_left top_right bottom_left bottom_right
-                                  mid_pt mid_x mid_y mid_z
-                                  min_x max_x angle deg_angle
-                                  orig_layer orig_color top_y_at_midx bottom_y_at_midx)
+                                  top_left top_right min_x max_x mid_x
+                                  temp_line_pt1 temp_line_pt2 temp_line vertical_line
+                                  vert_pt1 vert_pt2 ss_trim trimmed_line
+                                  line_start line_end mid_y mid_z angle
+                                  orig_layer orig_color old_osmode)
   (princ (strcat "\n텍스트 삽입 시작: " text_string))
   
   (if (and top_obj bottom_obj)
@@ -386,6 +324,10 @@
       ;; 원본 객체의 레이어와 색상 가져오기
       (setq orig_layer (vlax-get-property top_obj 'Layer))
       (setq orig_color (vlax-get-property top_obj 'Color))
+      
+      ;; OSNAP 끄기
+      (setq old_osmode (getvar "OSMODE"))
+      (setvar "OSMODE" 0)
       
       ;; 원본 객체의 정점 가져오기
       (setq top_coords (get-all-vertices top_obj))
@@ -408,49 +350,79 @@
         )
       )
       
-      ;; 텍스트 X 위치: 원본 객체의 양 끝점 중간
+      ;; 중간 X 좌표 계산
       (setq mid_x (/ (+ (car top_left) (car top_right)) 2.0))
-      
-      ;; mid_x 위치에서 원본 객체와 교차하는 Y좌표 계산 (곡선 고려)
-      (setq top_y_at_midx (find-y-at-x top_obj mid_x))
-      
-      ;; 첫 복사본 객체의 정점 가져오기
-      (setq bottom_coords (get-all-vertices bottom_obj))
-      
-      ;; mid_x 위치에서 첫 복사본과 교차하는 Y좌표 계산 (곡선 고려)
-      (setq bottom_y_at_midx (find-y-at-x bottom_obj mid_x))
-      
-      ;; 텍스트 Y 위치: 두 교차점의 평균
-      (setq mid_y (/ (+ top_y_at_midx bottom_y_at_midx) 2.0))
       (setq mid_z (/ (+ (caddr top_left) (caddr top_right)) 2.0))
-      (setq mid_pt (list mid_x mid_y mid_z))
       
-      ;; 원본 객체의 기울기 (왼쪽 끝 → 오른쪽 끝)
-      (setq angle (atan (- (cadr top_right) (cadr top_left))
-                        (- (car top_right) (car top_left))))
-      (setq deg_angle (* (/ angle pi) 180.0))
+      ;; 1. 임시 가로선 생성 (왼쪽 끝점 - 오른쪽 끝점)
+      (setq temp_line_pt1 (list (car top_left) (cadr top_left) mid_z))
+      (setq temp_line_pt2 (list (car top_right) (cadr top_right) mid_z))
+      (setq temp_line (entmakex (list
+                                  (cons 0 "LINE")
+                                  (cons 10 temp_line_pt1)
+                                  (cons 11 temp_line_pt2)
+                                )))
       
-      (princ (strcat "\n원본 X=" (rtos mid_x 2 2) " 위치의 Y좌표: " (rtos top_y_at_midx 2 2)))
-      (princ (strcat "\n첫 복사본 X=" (rtos mid_x 2 2) " 위치의 Y좌표: " (rtos bottom_y_at_midx 2 2)))
-      (princ (strcat "\n텍스트 위치: " (rtos mid_x 2 2) "," (rtos mid_y 2 2)))
-      (princ (strcat "\n각도(도): " (rtos deg_angle 2 2)))
+      ;; 2. 세로선 생성 (중간 X 좌표, 충분히 긴 길이)
+      (setq vert_pt1 (list mid_x (+ (cadr top_left) 1.0) mid_z))
+      (setq vert_pt2 (list mid_x (- (cadr top_left) 1.0) mid_z))
+      (setq vertical_line (entmakex (list
+                                      (cons 0 "LINE")
+                                      (cons 10 vert_pt1)
+                                      (cons 11 vert_pt2)
+                                    )))
       
-      ;; entmake를 사용하여 텍스트를 정확한 위치에 생성
-      (entmake (list
-                 (cons 0 "TEXT")
-                 (cons 8 orig_layer)              ; 레이어
-                 (cons 62 orig_color)             ; 색상
-                 (cons 10 (list mid_x mid_y mid_z))  ; 삽입점
-                 (cons 11 (list mid_x mid_y mid_z))  ; 정렬점 (Middle Center용)
-                 (cons 40 0.05)                   ; 높이
-                 (cons 1 text_string)             ; 텍스트 내용
-                 (cons 50 angle)                  ; 회전 각도 (라디안)
-                 (cons 72 1)                      ; 수평 정렬 (1 = Center)
-                 (cons 73 2)                      ; 수직 정렬 (2 = Middle)
-               ))
+      ;; 3. TRIM 명령 실행 (원본, 첫 복사본을 경계로 세로선 자르기)
+      (command "_.TRIM" 
+               (vlax-vla-object->ename top_obj)
+               (vlax-vla-object->ename bottom_obj)
+               ""
+               vertical_line
+               "")
       
-      (princ (strcat "\n텍스트 생성 완료 - 레이어: " orig_layer ", 색상: " (itoa orig_color)))
-      (princ "\n텍스트 삽입 완료")
+      ;; 4. 남은 세로선 찾기 (TRIM 후)
+      (setq trimmed_line (entlast))
+      
+      ;; 5. 세로선의 시작점과 끝점 가져오기
+      (if trimmed_line
+        (progn
+          (setq line_start (cdr (assoc 10 (entget trimmed_line))))
+          (setq line_end (cdr (assoc 11 (entget trimmed_line))))
+          
+          ;; 6. 세로선의 중간점 계산
+          (setq mid_y (/ (+ (cadr line_start) (cadr line_end)) 2.0))
+          
+          ;; 7. 원본 객체의 기울기 계산
+          (setq angle (atan (- (cadr top_right) (cadr top_left))
+                            (- (car top_right) (car top_left))))
+          
+          ;; 8. 텍스트 생성
+          (entmake (list
+                     (cons 0 "TEXT")
+                     (cons 8 orig_layer)
+                     (cons 62 orig_color)
+                     (cons 10 (list mid_x mid_y mid_z))
+                     (cons 11 (list mid_x mid_y mid_z))
+                     (cons 40 0.05)
+                     (cons 1 text_string)
+                     (cons 50 angle)
+                     (cons 72 1)
+                     (cons 73 2)
+                   ))
+          
+          ;; 9. 세로선 삭제
+          (entdel trimmed_line)
+          
+          (princ "\n텍스트 삽입 완료")
+        )
+        (princ "\n오류: TRIM 후 세로선을 찾을 수 없습니다")
+      )
+      
+      ;; 10. 임시 가로선 삭제
+      (entdel temp_line)
+      
+      ;; OSNAP 복원
+      (setvar "OSMODE" old_osmode)
     )
     (princ "\n오류: 객체가 nil입니다")
   )
