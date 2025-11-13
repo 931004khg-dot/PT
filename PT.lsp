@@ -373,6 +373,7 @@
                                     )))
       
       ;; 3. TRIM 명령 실행 (원본, 첫 복사본을 경계로 세로선 자르기)
+      (princ "\n[DEBUG] TRIM 명령 실행 중...")
       (command "_.TRIM" 
                (vlax-vla-object->ename top_obj)
                (vlax-vla-object->ename bottom_obj)
@@ -382,6 +383,7 @@
       
       ;; 4. 남은 세로선 찾기 (TRIM 후)
       (setq trimmed_line (entlast))
+      (princ (strcat "\n[DEBUG] Trimmed line: " (if trimmed_line (vl-princ-to-string trimmed_line) "nil")))
       
       ;; 5. 세로선의 시작점과 끝점 가져오기
       (if trimmed_line
@@ -389,8 +391,13 @@
           (setq line_start (cdr (assoc 10 (entget trimmed_line))))
           (setq line_end (cdr (assoc 11 (entget trimmed_line))))
           
+          (princ (strcat "\n[DEBUG] Line start: " (vl-princ-to-string line_start)))
+          (princ (strcat "\n[DEBUG] Line end: " (vl-princ-to-string line_end)))
+          
           ;; 6. 세로선의 중간점 계산
           (setq mid_y (/ (+ (cadr line_start) (cadr line_end)) 2.0))
+          
+          (princ (strcat "\n[DEBUG] Text Y: " (rtos mid_y 2 4)))
           
           ;; 7. 원본 객체의 기울기 계산
           (setq angle (atan (- (cadr top_right) (cadr top_left))
@@ -410,16 +417,17 @@
                      (cons 73 2)
                    ))
           
-          ;; 9. 세로선 삭제
-          (entdel trimmed_line)
+          ;; 9. 세로선 삭제 (디버그용으로 주석 처리)
+          ;(entdel trimmed_line)
           
-          (princ "\n텍스트 삽입 완료")
+          (princ "\n[DEBUG] 텍스트 삽입 완료 - 임시선 유지됨")
         )
         (princ "\n오류: TRIM 후 세로선을 찾을 수 없습니다")
       )
       
-      ;; 10. 임시 가로선 삭제
-      (entdel temp_line)
+      ;; 10. 임시 가로선 삭제 (디버그용으로 주석 처리)
+      ;(entdel temp_line)
+      (princ "\n[DEBUG] 임시 가로선 유지됨")
       
       ;; OSNAP 복원
       (setvar "OSMODE" old_osmode)
