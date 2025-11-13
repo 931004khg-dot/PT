@@ -1,5 +1,5 @@
 (defun C:PT (/ dcl_id dcl_file result option custom_val ss ent obj_list obj thickness sub_option 
-              custom_val1 custom_val2 custom_val3)
+              custom_val1 custom_val2 custom_val3 custom_text)
   
   ;; DCL 파일 자동 생성
   (setq dcl_file (strcat (getvar "ROAMABLEROOTPREFIX") "copy_object.dcl"))
@@ -57,6 +57,15 @@
   (write-line "    : edit_box {" f)
   (write-line "      key = \"custom_input3\";" f)
   (write-line "      edit_width = 8;" f)
+  (write-line "    }" f)
+  (write-line "  }" f)
+  (write-line "  : row {" f)
+  (write-line "    : text {" f)
+  (write-line "      label = \"TEXT:\";" f)
+  (write-line "    }" f)
+  (write-line "    : edit_box {" f)
+  (write-line "      key = \"custom_text\";" f)
+  (write-line "      edit_width = 30;" f)
   (write-line "    }" f)
   (write-line "  }" f)
   (write-line "  : row {" f)
@@ -120,6 +129,7 @@
   (action_tile "custom_input1" "(setq custom_val1 $value)")
   (action_tile "custom_input2" "(setq custom_val2 $value)")
   (action_tile "custom_input3" "(setq custom_val3 $value)")
+  (action_tile "custom_text" "(setq custom_text $value)")
   (action_tile "accept" "(setq result T)(done_dialog)")
   (action_tile "cancel" "(setq result nil)(done_dialog)")
   
@@ -147,7 +157,6 @@
                (setq new_obj1 (copy-object-y-down obj 0.05))
                (setq new_obj2 (copy-object-y-down new_obj1 0.1))
                (setq last_obj (copy-object-y-down new_obj2 0.22))
-               (draw-vertical-lines obj last_obj)
               )
               
               ;; ASP 옵션 2: 5-12-20 (0.05, 0.12, 0.2 순차적으로)
@@ -155,7 +164,6 @@
                (setq new_obj1 (copy-object-y-down obj 0.05))
                (setq new_obj2 (copy-object-y-down new_obj1 0.12))
                (setq last_obj (copy-object-y-down new_obj2 0.2))
-               (draw-vertical-lines obj last_obj)
               )
               
               ;; ASP 옵션 3: 5-6-12-22 (0.05, 0.06, 0.12, 0.22 순차적으로)
@@ -164,20 +172,17 @@
                (setq new_obj2 (copy-object-y-down new_obj1 0.06))
                (setq new_obj3 (copy-object-y-down new_obj2 0.12))
                (setq last_obj (copy-object-y-down new_obj3 0.22))
-               (draw-vertical-lines obj last_obj)
               )
               
               ;; ASP덧씌우기: 5 (0.05)
               ((= option "asp_over")
                (setq last_obj (copy-object-y-down obj 0.05))
-               (draw-vertical-lines obj last_obj)
               )
               
               ;; CON'C: 20-20 (0.2, 0.2 순차적으로)
               ((= option "conc")
                (setq new_obj1 (copy-object-y-down obj 0.2))
                (setq last_obj (copy-object-y-down new_obj1 0.2))
-               (draw-vertical-lines obj last_obj)
                (add-text-between-objects obj new_obj1 "CON'C")
               )
               
@@ -186,7 +191,6 @@
                (setq new_obj1 (copy-object-y-down obj 0.06))
                (setq new_obj2 (copy-object-y-down new_obj1 0.04))
                (setq last_obj (copy-object-y-down new_obj2 0.1))
-               (draw-vertical-lines obj last_obj)
               )
               
               ;; 보도 옵션 2: 8-3-15 (0.08, 0.03, 0.15 순차적으로)
@@ -194,23 +198,32 @@
                (setq new_obj1 (copy-object-y-down obj 0.08))
                (setq new_obj2 (copy-object-y-down new_obj1 0.03))
                (setq last_obj (copy-object-y-down new_obj2 0.15))
-               (draw-vertical-lines obj last_obj)
               )
               
               ;; 자전거도로: 도막-10-20 (원본 두께 0.003, 0.1 아래 복사 두께 0, 다시 0.2 아래)
               ((= option "bike")
-               ;; 원본 객체 두께를 0.003으로 변경
-               (if (vlax-property-available-p obj 'Thickness)
-                 (vlax-put-property obj 'Thickness 0.003)
+               ;; 원본 객체 두께를 0.003으로 변경 (LWPOLYLINE은 ConstantWidth 사용)
+               (if (vlax-property-available-p obj 'ConstantWidth)
+                 (vlax-put-property obj 'ConstantWidth 0.003)
+                 ;; ConstantWidth가 없으면 Thickness 시도
+                 (if (vlax-property-available-p obj 'Thickness)
+                   (vlax-put-property obj 'Thickness 0.003)
+                 )
                )
                ;; 0.1 아래 복사 (두께 0)
                (setq new_obj1 (copy-object-y-down obj 0.1))
-               (if (and new_obj1 (vlax-property-available-p new_obj1 'Thickness))
-                 (vlax-put-property new_obj1 'Thickness 0.0)
+               (if new_obj1
+                 (progn
+                   (if (vlax-property-available-p new_obj1 'ConstantWidth)
+                     (vlax-put-property new_obj1 'ConstantWidth 0.0)
+                     (if (vlax-property-available-p new_obj1 'Thickness)
+                       (vlax-put-property new_obj1 'Thickness 0.0)
+                     )
+                   )
+                 )
                )
                ;; 그 위치에서 0.2 아래 복사
                (setq last_obj (copy-object-y-down new_obj1 0.2))
-               (draw-vertical-lines obj last_obj)
                (add-text-between-objects obj new_obj1 "자전거도로")
               )
               
@@ -227,7 +240,10 @@
                        (setq new_obj1 (copy-object-y-down obj dist1))
                        (setq new_obj2 (copy-object-y-down new_obj1 dist2))
                        (setq last_obj (copy-object-y-down new_obj2 dist3))
-                       (draw-vertical-lines obj last_obj)
+                       ;; 사용자가 입력한 텍스트가 있으면 원본과 첫 복사본 사이에 삽입
+                       (if (and custom_text (> (strlen custom_text) 0))
+                         (add-text-between-objects obj new_obj1 custom_text)
+                       )
                      )
                      (alert "모든 값은 0보다 커야 합니다.")
                    )
@@ -251,143 +267,57 @@
 ;; 객체를 Y축 아래로 복사하는 함수
 (defun copy-object-y-down (obj distance / new_obj offset result)
   (setq new_obj nil)
-  (princ (strcat "\n[DEBUG] copy-object-y-down 시작 - distance: " (rtos distance 2 3)))
   
   (setq result
     (vl-catch-all-apply
       '(lambda ()
-         (princ "\n[DEBUG] vla-copy 시작")
          (setq new_obj (vla-copy obj))
-         (princ (strcat "\n[DEBUG] 복사 완료 - new_obj: " (if new_obj "존재함" "nil")))
          
          ;; 이동 벡터 계산 (Y축 방향으로 -distance)
          (setq offset (vlax-make-safearray vlax-vbDouble '(0 . 2)))
          (vlax-safearray-put-element offset 0 0.0)
          (vlax-safearray-put-element offset 1 (- distance))
          (vlax-safearray-put-element offset 2 0.0)
-         (princ "\n[DEBUG] offset 생성 완료")
          
          ;; 객체 이동
-         (princ "\n[DEBUG] vla-move 시작")
          (vla-move new_obj 
                    (vlax-3d-point '(0 0 0))
                    (vlax-3d-point (list 0.0 (- distance) 0.0)))
-         (princ "\n[DEBUG] 이동 완료")
       )
     )
   )
   
   (if (vl-catch-all-error-p result)
-    (princ (strcat "\n[ERROR] copy-object-y-down 오류: " (vl-catch-all-error-message result)))
-    (princ "\n[DEBUG] copy-object-y-down 정상 완료")
+    (princ (strcat "\n오류: " (vl-catch-all-error-message result)))
   )
   
   new_obj
 )
 
-;; 원본 객체와 마지막 객체의 양 끝점을 연결하는 세로선을 그리는 함수
-(defun draw-vertical-lines (orig_obj last_obj / result 
-                            orig_coords last_coords
-                            orig_left orig_right last_left last_right
-                            min_x max_x temp_pt)
-  (princ "\n[DEBUG] draw-vertical-lines 시작")
-  
-  (if (and orig_obj last_obj)
-    (progn
-      (setq result
-        (vl-catch-all-apply
-          '(lambda ()
-             ;; 원본 객체의 모든 정점 가져오기
-             (princ "\n[DEBUG] 원본 객체 정점 가져오기...")
-             (setq orig_coords (get-all-vertices orig_obj))
-             (princ (strcat "\n[DEBUG] 원본 정점 수: " (itoa (length orig_coords))))
-             
-             ;; X 좌표가 가장 작은 점과 가장 큰 점 찾기
-             (setq min_x 1e99)
-             (setq max_x -1e99)
-             (foreach pt orig_coords
-               (if (< (car pt) min_x)
-                 (progn
-                   (setq min_x (car pt))
-                   (setq orig_left pt)
-                 )
-               )
-               (if (> (car pt) max_x)
-                 (progn
-                   (setq max_x (car pt))
-                   (setq orig_right pt)
-                 )
-               )
-             )
-             (princ (strcat "\n[DEBUG] 원본 왼쪽: " (vl-princ-to-string orig_left)))
-             (princ (strcat "\n[DEBUG] 원본 오른쪽: " (vl-princ-to-string orig_right)))
-             
-             ;; 마지막 객체의 모든 정점 가져오기
-             (princ "\n[DEBUG] 마지막 객체 정점 가져오기...")
-             (setq last_coords (get-all-vertices last_obj))
-             (princ (strcat "\n[DEBUG] 마지막 정점 수: " (itoa (length last_coords))))
-             
-             ;; X 좌표가 가장 작은 점과 가장 큰 점 찾기
-             (setq min_x 1e99)
-             (setq max_x -1e99)
-             (foreach pt last_coords
-               (if (< (car pt) min_x)
-                 (progn
-                   (setq min_x (car pt))
-                   (setq last_left pt)
-                 )
-               )
-               (if (> (car pt) max_x)
-                 (progn
-                   (setq max_x (car pt))
-                   (setq last_right pt)
-                 )
-               )
-             )
-             (princ (strcat "\n[DEBUG] 마지막 왼쪽: " (vl-princ-to-string last_left)))
-             (princ (strcat "\n[DEBUG] 마지막 오른쪽: " (vl-princ-to-string last_right)))
-             
-             ;; 세로선 그리기
-             (if (and orig_left last_left)
-               (progn
-                 (princ "\n[DEBUG] 왼쪽 세로선 그리기")
-                 (command "_.line" orig_left last_left "")
-               )
-             )
-             
-             (if (and orig_right last_right)
-               (progn
-                 (princ "\n[DEBUG] 오른쪽 세로선 그리기")
-                 (command "_.line" orig_right last_right "")
-               )
-             )
-          )
-        )
-      )
-      
-      (if (vl-catch-all-error-p result)
-        (princ (strcat "\n[ERROR] draw-vertical-lines 오류: " (vl-catch-all-error-message result)))
-        (princ "\n[DEBUG] draw-vertical-lines 정상 완료")
-      )
-    )
-    (princ "\n[ERROR] draw-vertical-lines - 객체가 nil입니다")
-  )
-)
 
-;; 객체의 모든 정점을 가져오는 함수
-(defun get-all-vertices (obj / coords pt_list i n pt)
+
+;; 객체의 모든 정점을 가져오는 함수 (2D LWPOLYLINE용)
+(defun get-all-vertices (obj / coords pt_list i n pt z_val)
   (setq pt_list '())
   
   (if (vlax-property-available-p obj 'Coordinates)
     (progn
-      ;; LWPOLYLINE, POLYLINE 등의 좌표 가져오기
+      ;; LWPOLYLINE의 좌표 가져오기 (2D는 X,Y만 있음)
       (setq coords (vlax-safearray->list (vlax-variant-value (vlax-get-property obj 'Coordinates))))
+      
+      ;; Elevation 속성으로 Z 좌표 가져오기 (없으면 0.0)
+      (setq z_val (if (vlax-property-available-p obj 'Elevation)
+                    (vlax-get-property obj 'Elevation)
+                    0.0))
+      
       (setq i 0)
       (setq n (length coords))
+      
+      ;; 2D LWPOLYLINE은 X,Y만 있으므로 2씩 증가
       (while (< i n)
-        (setq pt (list (nth i coords) (nth (+ i 1) coords) (nth (+ i 2) coords)))
+        (setq pt (list (nth i coords) (nth (+ i 1) coords) z_val))
         (setq pt_list (append pt_list (list pt)))
-        (setq i (+ i 3))
+        (setq i (+ i 2))
       )
     )
     (progn
@@ -404,105 +334,128 @@
   pt_list
 )
 
-;; 두 객체 사이에 텍스트를 추가하는 함수
-(defun add-text-between-objects (top_obj bottom_obj text_string / result
+;; 선택한 객체와 첫 번째 복사 객체 사이에 텍스트를 추가하는 함수
+(defun add-text-between-objects (top_obj bottom_obj text_string / 
                                   top_coords bottom_coords
-                                  top_left top_right bottom_left bottom_right
-                                  mid_pt angle deg_angle)
-  (princ (strcat "\n[DEBUG] add-text-between-objects 시작 - 텍스트: " text_string))
-  
+                                  top_left top_right min_x max_x mid_x
+                                  temp_line_pt1 temp_line_pt2 temp_line vertical_line
+                                  vert_pt1 vert_pt2 ss_trim trimmed_line
+                                  line_start line_end mid_y mid_z angle
+                                  orig_layer orig_color old_osmode
+                                  test_point_top test_point_bottom top_intersect bottom_intersect
+                                  top_y bottom_y)
   (if (and top_obj bottom_obj)
     (progn
-      (setq result
-        (vl-catch-all-apply
-          '(lambda ()
-             ;; 원본 객체의 정점 가져오기
-             (princ "\n[DEBUG] 원본 객체 정점 가져오기...")
-             (setq top_coords (get-all-vertices top_obj))
-             
-             ;; X 좌표가 가장 작은/큰 점 찾기
-             (setq min_x 1e99)
-             (setq max_x -1e99)
-             (foreach pt top_coords
-               (if (< (car pt) min_x)
-                 (progn
-                   (setq min_x (car pt))
-                   (setq top_left pt)
-                 )
-               )
-               (if (> (car pt) max_x)
-                 (progn
-                   (setq max_x (car pt))
-                   (setq top_right pt)
-                 )
-               )
-             )
-             (princ (strcat "\n[DEBUG] 원본 왼쪽: " (vl-princ-to-string top_left)))
-             (princ (strcat "\n[DEBUG] 원본 오른쪽: " (vl-princ-to-string top_right)))
-             
-             ;; 첫 복사본 객체의 정점 가져오기
-             (princ "\n[DEBUG] 첫 복사본 객체 정점 가져오기...")
-             (setq bottom_coords (get-all-vertices bottom_obj))
-             
-             ;; X 좌표가 가장 작은/큰 점 찾기
-             (setq min_x 1e99)
-             (setq max_x -1e99)
-             (foreach pt bottom_coords
-               (if (< (car pt) min_x)
-                 (progn
-                   (setq min_x (car pt))
-                   (setq bottom_left pt)
-                 )
-               )
-               (if (> (car pt) max_x)
-                 (progn
-                   (setq max_x (car pt))
-                   (setq bottom_right pt)
-                 )
-               )
-             )
-             (princ (strcat "\n[DEBUG] 첫 복사본 왼쪽: " (vl-princ-to-string bottom_left)))
-             (princ (strcat "\n[DEBUG] 첫 복사본 오른쪽: " (vl-princ-to-string bottom_right)))
-             
-             ;; 원본 객체 중심점 계산 (왼쪽과 오른쪽 끝의 중간)
-             (setq top_center (list (/ (+ (car top_left) (car top_right)) 2.0)
-                                    (/ (+ (cadr top_left) (cadr top_right)) 2.0)
-                                    (/ (+ (caddr top_left) (caddr top_right)) 2.0)))
-             
-             ;; 첫 복사본 객체 중심점 계산
-             (setq bottom_center (list (/ (+ (car bottom_left) (car bottom_right)) 2.0)
-                                       (/ (+ (cadr bottom_left) (cadr bottom_right)) 2.0)
-                                       (/ (+ (caddr bottom_left) (caddr bottom_right)) 2.0)))
-             
-             ;; 두 중심점의 정확한 중간점 계산
-             (setq mid_pt (list (/ (+ (car top_center) (car bottom_center)) 2.0)
-                                (/ (+ (cadr top_center) (cadr bottom_center)) 2.0)
-                                (/ (+ (caddr top_center) (caddr bottom_center)) 2.0)))
-             (princ (strcat "\n[DEBUG] 텍스트 중간점: " (vl-princ-to-string mid_pt)))
-             
-             ;; 원본 객체의 기울기 계산 (왼쪽 → 오른쪽)
-             (setq angle (atan (- (cadr top_right) (cadr top_left))
-                               (- (car top_right) (car top_left))))
-             (setq deg_angle (* (/ angle pi) 180.0))
-             (princ (strcat "\n[DEBUG] 텍스트 각도(도): " (rtos deg_angle 2 2)))
-             
-             ;; 텍스트 삽입 (회전 적용)
-             (princ "\n[DEBUG] TEXT 명령 실행 (회전 적용)")
-             (command "_.text" "_J" "_MC" mid_pt "0.05" (rtos angle 2 6) text_string)
-             (princ "\n[DEBUG] 텍스트 삽입 완료")
+      ;; 원본 객체의 레이어와 색상 가져오기
+      (setq orig_layer (vlax-get-property top_obj 'Layer))
+      (setq orig_color (vlax-get-property top_obj 'Color))
+      
+      ;; OSNAP 끄기
+      (setq old_osmode (getvar "OSMODE"))
+      (setvar "OSMODE" 0)
+      
+      ;; 원본 객체의 정점 가져오기
+      (setq top_coords (get-all-vertices top_obj))
+      
+      ;; X 좌표가 가장 작은/큰 점 찾기 (양 끝점)
+      (setq min_x 1e99)
+      (setq max_x -1e99)
+      (foreach pt top_coords
+        (if (< (car pt) min_x)
+          (progn
+            (setq min_x (car pt))
+            (setq top_left pt)
+          )
+        )
+        (if (> (car pt) max_x)
+          (progn
+            (setq max_x (car pt))
+            (setq top_right pt)
           )
         )
       )
       
-      (if (vl-catch-all-error-p result)
-        (princ (strcat "\n[ERROR] add-text-between-objects 오류: " (vl-catch-all-error-message result)))
-        (princ "\n[DEBUG] add-text-between-objects 정상 완료")
+      ;; 중간 X 좌표 계산
+      (setq mid_x (/ (+ (car top_left) (car top_right)) 2.0))
+      (setq mid_z (/ (+ (caddr top_left) (caddr top_right)) 2.0))
+      
+      ;; 1. 임시 가로선 생성 (왼쪽 끝점 - 오른쪽 끝점) - 디버그용
+      (setq temp_line_pt1 (list (car top_left) (cadr top_left) mid_z))
+      (setq temp_line_pt2 (list (car top_right) (cadr top_right) mid_z))
+      (setq temp_line (entmakex (list
+                                  (cons 0 "LINE")
+                                  (cons 10 temp_line_pt1)
+                                  (cons 11 temp_line_pt2)
+                                )))
+      
+      ;; 2. 세로선 생성 (중간 X 좌표, 충분히 긴 길이) - 디버그용
+      (setq vert_pt1 (list mid_x (+ (cadr top_left) 1.0) mid_z))
+      (setq vert_pt2 (list mid_x (- (cadr top_left) 1.0) mid_z))
+      (setq vertical_line (entmakex (list
+                                      (cons 0 "LINE")
+                                      (cons 10 vert_pt1)
+                                      (cons 11 vert_pt2)
+                                    )))
+      
+      ;; 3. 원본 객체와 세로선의 교차점 찾기 (vlax-curve 함수 사용)
+      ;; 중간 X 좌표에서 가장 가까운 점 찾기 (원본 객체)
+      (setq test_point_top (list mid_x (cadr top_left) mid_z))
+      (setq top_intersect (vlax-curve-getClosestPointTo top_obj test_point_top))
+      
+      ;; 첫 복사본의 좌표 가져오기
+      (setq bottom_coords (get-all-vertices bottom_obj))
+      (setq bottom_left (car bottom_coords))  ; 첫 번째 점을 기준으로
+      
+      ;; 첫 복사본과의 교차점 찾기
+      (setq test_point_bottom (list mid_x (cadr bottom_left) mid_z))
+      (setq bottom_intersect (vlax-curve-getClosestPointTo bottom_obj test_point_bottom))
+      
+      ;; 4. 두 교차점의 중간 Y 좌표 계산
+      (if (and top_intersect bottom_intersect)
+        (progn
+          (setq top_y (cadr top_intersect))
+          (setq bottom_y (cadr bottom_intersect))
+          (setq mid_y (/ (+ top_y bottom_y) 2.0))
+          
+          ;; 5. 원본 객체의 기울기 계산
+          (setq angle (atan (- (cadr top_right) (cadr top_left))
+                            (- (car top_right) (car top_left))))
+          
+          ;; 6. 텍스트 생성
+          (entmake (list
+                     (cons 0 "TEXT")
+                     (cons 8 orig_layer)
+                     (cons 62 orig_color)
+                     (cons 10 (list mid_x mid_y mid_z))
+                     (cons 11 (list mid_x mid_y mid_z))
+                     (cons 40 0.05)
+                     (cons 1 text_string)
+                     (cons 50 angle)
+                     (cons 72 1)
+                     (cons 73 2)
+                   ))
+          
+          ;; 7. 임시 선들 삭제
+          (entdel temp_line)
+          (entdel vertical_line)
+          
+          (princ "\n텍스트 삽입 완료")
+        )
+        (progn
+          ;; 오류 시에도 임시 선들 삭제
+          (if temp_line (entdel temp_line))
+          (if vertical_line (entdel vertical_line))
+          (princ "\n오류: 교차점을 찾을 수 없습니다")
+        )
       )
+      
+      ;; OSNAP 복원
+      (setvar "OSMODE" old_osmode)
     )
-    (princ "\n[ERROR] add-text-between-objects - 객체가 nil입니다")
+    (princ "\n오류: 객체가 nil입니다")
   )
 )
 
-(princ "\n객체 복사 프로그램이 로드되었습니다.")
+(princ "\n포장 TYPE 프로그램이 로드되었습니다.")
 (princ "\n명령어: PT")
 (princ)
