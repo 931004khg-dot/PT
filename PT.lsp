@@ -287,63 +287,80 @@
 
 ;; 원본 객체와 마지막 객체의 양 끝점을 연결하는 세로선을 그리는 함수
 (defun draw-vertical-lines (orig_obj last_obj / result 
-                            orig_min orig_max last_min last_max
-                            orig_min_list orig_max_list last_min_list last_max_list
-                            orig_left orig_right last_left last_right)
+                            orig_coords last_coords
+                            orig_left orig_right last_left last_right
+                            min_x max_x temp_pt)
   (princ "\n[DEBUG] draw-vertical-lines 시작")
-  (princ (strcat "\n[DEBUG] orig_obj: " (if orig_obj "존재함" "nil")))
-  (princ (strcat "\n[DEBUG] last_obj: " (if last_obj "존재함" "nil")))
   
   (if (and orig_obj last_obj)
     (progn
       (setq result
         (vl-catch-all-apply
           '(lambda ()
-             ;; 바운딩 박스를 사용하여 양 끝점 계산
-             (princ "\n[DEBUG] 원본 객체 바운딩 박스 가져오기...")
-             (vla-getboundingbox orig_obj 'orig_min 'orig_max)
-             (setq orig_min_list (vlax-safearray->list orig_min))
-             (setq orig_max_list (vlax-safearray->list orig_max))
-             (princ (strcat "\n[DEBUG] 원본 Min: " (vl-princ-to-string orig_min_list)))
-             (princ (strcat "\n[DEBUG] 원본 Max: " (vl-princ-to-string orig_max_list)))
+             ;; 원본 객체의 모든 정점 가져오기
+             (princ "\n[DEBUG] 원본 객체 정점 가져오기...")
+             (setq orig_coords (get-all-vertices orig_obj))
+             (princ (strcat "\n[DEBUG] 원본 정점 수: " (itoa (length orig_coords))))
              
-             (princ "\n[DEBUG] 마지막 객체 바운딩 박스 가져오기...")
-             (vla-getboundingbox last_obj 'last_min 'last_max)
-             (setq last_min_list (vlax-safearray->list last_min))
-             (setq last_max_list (vlax-safearray->list last_max))
-             (princ (strcat "\n[DEBUG] 마지막 Min: " (vl-princ-to-string last_min_list)))
-             (princ (strcat "\n[DEBUG] 마지막 Max: " (vl-princ-to-string last_max_list)))
-             
-             ;; 왼쪽 끝점 (X 최소값, Y 좌표)
-             (setq orig_left (list (car orig_min_list) 
-                                   (cadr orig_min_list) 
-                                   (caddr orig_min_list)))
-             (setq last_left (list (car last_min_list) 
-                                   (cadr last_min_list) 
-                                   (caddr last_min_list)))
-             
-             ;; 오른쪽 끝점 (X 최대값, Y 좌표)
-             (setq orig_right (list (car orig_max_list) 
-                                    (cadr orig_min_list) 
-                                    (caddr orig_min_list)))
-             (setq last_right (list (car last_max_list) 
-                                    (cadr last_min_list) 
-                                    (caddr last_min_list)))
-             
+             ;; X 좌표가 가장 작은 점과 가장 큰 점 찾기
+             (setq min_x 1e99)
+             (setq max_x -1e99)
+             (foreach pt orig_coords
+               (if (< (car pt) min_x)
+                 (progn
+                   (setq min_x (car pt))
+                   (setq orig_left pt)
+                 )
+               )
+               (if (> (car pt) max_x)
+                 (progn
+                   (setq max_x (car pt))
+                   (setq orig_right pt)
+                 )
+               )
+             )
              (princ (strcat "\n[DEBUG] 원본 왼쪽: " (vl-princ-to-string orig_left)))
              (princ (strcat "\n[DEBUG] 원본 오른쪽: " (vl-princ-to-string orig_right)))
+             
+             ;; 마지막 객체의 모든 정점 가져오기
+             (princ "\n[DEBUG] 마지막 객체 정점 가져오기...")
+             (setq last_coords (get-all-vertices last_obj))
+             (princ (strcat "\n[DEBUG] 마지막 정점 수: " (itoa (length last_coords))))
+             
+             ;; X 좌표가 가장 작은 점과 가장 큰 점 찾기
+             (setq min_x 1e99)
+             (setq max_x -1e99)
+             (foreach pt last_coords
+               (if (< (car pt) min_x)
+                 (progn
+                   (setq min_x (car pt))
+                   (setq last_left pt)
+                 )
+               )
+               (if (> (car pt) max_x)
+                 (progn
+                   (setq max_x (car pt))
+                   (setq last_right pt)
+                 )
+               )
+             )
              (princ (strcat "\n[DEBUG] 마지막 왼쪽: " (vl-princ-to-string last_left)))
              (princ (strcat "\n[DEBUG] 마지막 오른쪽: " (vl-princ-to-string last_right)))
              
-             ;; 세로선 그리기 (왼쪽)
-             (princ "\n[DEBUG] 세로선 그리기 시작 (왼쪽)")
-             (command "_.line" orig_left last_left "")
-             (princ "\n[DEBUG] 왼쪽 세로선 완료")
+             ;; 세로선 그리기
+             (if (and orig_left last_left)
+               (progn
+                 (princ "\n[DEBUG] 왼쪽 세로선 그리기")
+                 (command "_.line" orig_left last_left "")
+               )
+             )
              
-             ;; 세로선 그리기 (오른쪽)
-             (princ "\n[DEBUG] 세로선 그리기 시작 (오른쪽)")
-             (command "_.line" orig_right last_right "")
-             (princ "\n[DEBUG] 오른쪽 세로선 완료")
+             (if (and orig_right last_right)
+               (progn
+                 (princ "\n[DEBUG] 오른쪽 세로선 그리기")
+                 (command "_.line" orig_right last_right "")
+               )
+             )
           )
         )
       )
@@ -357,57 +374,121 @@
   )
 )
 
+;; 객체의 모든 정점을 가져오는 함수
+(defun get-all-vertices (obj / coords pt_list i n pt)
+  (setq pt_list '())
+  
+  (if (vlax-property-available-p obj 'Coordinates)
+    (progn
+      ;; LWPOLYLINE, POLYLINE 등의 좌표 가져오기
+      (setq coords (vlax-safearray->list (vlax-variant-value (vlax-get-property obj 'Coordinates))))
+      (setq i 0)
+      (setq n (length coords))
+      (while (< i n)
+        (setq pt (list (nth i coords) (nth (+ i 1) coords) (nth (+ i 2) coords)))
+        (setq pt_list (append pt_list (list pt)))
+        (setq i (+ i 3))
+      )
+    )
+    (progn
+      ;; LINE 객체의 경우
+      (if (vlax-property-available-p obj 'StartPoint)
+        (setq pt_list (append pt_list (list (vlax-safearray->list (vlax-get obj 'StartPoint)))))
+      )
+      (if (vlax-property-available-p obj 'EndPoint)
+        (setq pt_list (append pt_list (list (vlax-safearray->list (vlax-get obj 'EndPoint)))))
+      )
+    )
+  )
+  
+  pt_list
+)
+
 ;; 두 객체 사이에 텍스트를 추가하는 함수
 (defun add-text-between-objects (top_obj bottom_obj text_string / result
-                                  top_min top_max bottom_min bottom_max
-                                  top_min_list top_max_list bottom_min_list bottom_max_list
-                                  top_center bottom_center mid_pt mid_x mid_y mid_z)
+                                  top_coords bottom_coords
+                                  top_left top_right bottom_left bottom_right
+                                  mid_pt angle deg_angle)
   (princ (strcat "\n[DEBUG] add-text-between-objects 시작 - 텍스트: " text_string))
-  (princ (strcat "\n[DEBUG] top_obj: " (if top_obj "존재함" "nil")))
-  (princ (strcat "\n[DEBUG] bottom_obj: " (if bottom_obj "존재함" "nil")))
   
   (if (and top_obj bottom_obj)
     (progn
       (setq result
         (vl-catch-all-apply
           '(lambda ()
-             ;; 바운딩 박스를 사용하여 중심점 계산
-             (princ "\n[DEBUG] 위쪽 객체 바운딩 박스 가져오기...")
-             (vla-getboundingbox top_obj 'top_min 'top_max)
-             (setq top_min_list (vlax-safearray->list top_min))
-             (setq top_max_list (vlax-safearray->list top_max))
-             (princ (strcat "\n[DEBUG] 위쪽 Min: " (vl-princ-to-string top_min_list)))
-             (princ (strcat "\n[DEBUG] 위쪽 Max: " (vl-princ-to-string top_max_list)))
+             ;; 원본 객체의 정점 가져오기
+             (princ "\n[DEBUG] 원본 객체 정점 가져오기...")
+             (setq top_coords (get-all-vertices top_obj))
              
-             ;; 위쪽 객체 중심점
-             (setq top_center (list (/ (+ (car top_min_list) (car top_max_list)) 2.0)
-                                    (/ (+ (cadr top_min_list) (cadr top_max_list)) 2.0)
-                                    (/ (+ (caddr top_min_list) (caddr top_max_list)) 2.0)))
-             (princ (strcat "\n[DEBUG] 위쪽 중심: " (vl-princ-to-string top_center)))
+             ;; X 좌표가 가장 작은/큰 점 찾기
+             (setq min_x 1e99)
+             (setq max_x -1e99)
+             (foreach pt top_coords
+               (if (< (car pt) min_x)
+                 (progn
+                   (setq min_x (car pt))
+                   (setq top_left pt)
+                 )
+               )
+               (if (> (car pt) max_x)
+                 (progn
+                   (setq max_x (car pt))
+                   (setq top_right pt)
+                 )
+               )
+             )
+             (princ (strcat "\n[DEBUG] 원본 왼쪽: " (vl-princ-to-string top_left)))
+             (princ (strcat "\n[DEBUG] 원본 오른쪽: " (vl-princ-to-string top_right)))
              
-             (princ "\n[DEBUG] 아래쪽 객체 바운딩 박스 가져오기...")
-             (vla-getboundingbox bottom_obj 'bottom_min 'bottom_max)
-             (setq bottom_min_list (vlax-safearray->list bottom_min))
-             (setq bottom_max_list (vlax-safearray->list bottom_max))
-             (princ (strcat "\n[DEBUG] 아래쪽 Min: " (vl-princ-to-string bottom_min_list)))
-             (princ (strcat "\n[DEBUG] 아래쪽 Max: " (vl-princ-to-string bottom_max_list)))
+             ;; 첫 복사본 객체의 정점 가져오기
+             (princ "\n[DEBUG] 첫 복사본 객체 정점 가져오기...")
+             (setq bottom_coords (get-all-vertices bottom_obj))
              
-             ;; 아래쪽 객체 중심점
-             (setq bottom_center (list (/ (+ (car bottom_min_list) (car bottom_max_list)) 2.0)
-                                       (/ (+ (cadr bottom_min_list) (cadr bottom_max_list)) 2.0)
-                                       (/ (+ (caddr bottom_min_list) (caddr bottom_max_list)) 2.0)))
-             (princ (strcat "\n[DEBUG] 아래쪽 중심: " (vl-princ-to-string bottom_center)))
+             ;; X 좌표가 가장 작은/큰 점 찾기
+             (setq min_x 1e99)
+             (setq max_x -1e99)
+             (foreach pt bottom_coords
+               (if (< (car pt) min_x)
+                 (progn
+                   (setq min_x (car pt))
+                   (setq bottom_left pt)
+                 )
+               )
+               (if (> (car pt) max_x)
+                 (progn
+                   (setq max_x (car pt))
+                   (setq bottom_right pt)
+                 )
+               )
+             )
+             (princ (strcat "\n[DEBUG] 첫 복사본 왼쪽: " (vl-princ-to-string bottom_left)))
+             (princ (strcat "\n[DEBUG] 첫 복사본 오른쪽: " (vl-princ-to-string bottom_right)))
              
-             ;; 두 중심점 사이의 중간점 계산
-             (setq mid_x (/ (+ (car top_center) (car bottom_center)) 2.0))
-             (setq mid_y (/ (+ (cadr top_center) (cadr bottom_center)) 2.0))
-             (setq mid_z (/ (+ (caddr top_center) (caddr bottom_center)) 2.0))
-             (setq mid_pt (list mid_x mid_y mid_z))
-             (princ (strcat "\n[DEBUG] 텍스트 삽입 중간점: " (vl-princ-to-string mid_pt)))
+             ;; 원본 객체 중심점 계산 (왼쪽과 오른쪽 끝의 중간)
+             (setq top_center (list (/ (+ (car top_left) (car top_right)) 2.0)
+                                    (/ (+ (cadr top_left) (cadr top_right)) 2.0)
+                                    (/ (+ (caddr top_left) (caddr top_right)) 2.0)))
              
-             ;; 텍스트 삽입
-             (princ "\n[DEBUG] TEXT 명령 실행")
-             (command "_.text" "_J" "_MC" mid_pt "0.05" "0" text_string)
+             ;; 첫 복사본 객체 중심점 계산
+             (setq bottom_center (list (/ (+ (car bottom_left) (car bottom_right)) 2.0)
+                                       (/ (+ (cadr bottom_left) (cadr bottom_right)) 2.0)
+                                       (/ (+ (caddr bottom_left) (caddr bottom_right)) 2.0)))
+             
+             ;; 두 중심점의 정확한 중간점 계산
+             (setq mid_pt (list (/ (+ (car top_center) (car bottom_center)) 2.0)
+                                (/ (+ (cadr top_center) (cadr bottom_center)) 2.0)
+                                (/ (+ (caddr top_center) (caddr bottom_center)) 2.0)))
+             (princ (strcat "\n[DEBUG] 텍스트 중간점: " (vl-princ-to-string mid_pt)))
+             
+             ;; 원본 객체의 기울기 계산 (왼쪽 → 오른쪽)
+             (setq angle (atan (- (cadr top_right) (cadr top_left))
+                               (- (car top_right) (car top_left))))
+             (setq deg_angle (* (/ angle pi) 180.0))
+             (princ (strcat "\n[DEBUG] 텍스트 각도(도): " (rtos deg_angle 2 2)))
+             
+             ;; 텍스트 삽입 (회전 적용)
+             (princ "\n[DEBUG] TEXT 명령 실행 (회전 적용)")
+             (command "_.text" "_J" "_MC" mid_pt "0.05" (rtos angle 2 6) text_string)
              (princ "\n[DEBUG] 텍스트 삽입 완료")
           )
         )
