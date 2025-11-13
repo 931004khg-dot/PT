@@ -242,35 +242,28 @@
 ;; 객체를 Y축 아래로 복사하는 함수
 (defun copy-object-y-down (obj distance / new_obj offset result)
   (setq new_obj nil)
-  (princ (strcat "\n[DEBUG] copy-object-y-down 시작 - distance: " (rtos distance 2 3)))
   
   (setq result
     (vl-catch-all-apply
       '(lambda ()
-         (princ "\n[DEBUG] vla-copy 시작")
          (setq new_obj (vla-copy obj))
-         (princ (strcat "\n[DEBUG] 복사 완료 - new_obj: " (if new_obj "존재함" "nil")))
          
          ;; 이동 벡터 계산 (Y축 방향으로 -distance)
          (setq offset (vlax-make-safearray vlax-vbDouble '(0 . 2)))
          (vlax-safearray-put-element offset 0 0.0)
          (vlax-safearray-put-element offset 1 (- distance))
          (vlax-safearray-put-element offset 2 0.0)
-         (princ "\n[DEBUG] offset 생성 완료")
          
          ;; 객체 이동
-         (princ "\n[DEBUG] vla-move 시작")
          (vla-move new_obj 
                    (vlax-3d-point '(0 0 0))
                    (vlax-3d-point (list 0.0 (- distance) 0.0)))
-         (princ "\n[DEBUG] 이동 완료")
       )
     )
   )
   
   (if (vl-catch-all-error-p result)
-    (princ (strcat "\n[ERROR] copy-object-y-down 오류: " (vl-catch-all-error-message result)))
-    (princ "\n[DEBUG] copy-object-y-down 정상 완료")
+    (princ (strcat "\n오류: " (vl-catch-all-error-message result)))
   )
   
   new_obj
@@ -316,13 +309,85 @@
   pt_list
 )
 
+;; 수직선과 LWPOLYLINE의 교차점을 찾는 함수 (곡선 포함)
+(defun find-y-at-x (obj target_x / coords pt_list i n pt1 pt2 x1 y1 x2 y2 
+                     bulge theta radius center_x center_y start_angle end_angle
+                     test_y result_y min_dist dist test_pt z_val)
+  ;; 정점 좌표 가져오기
+  (setq coords (vlax-safearray->list (vlax-variant-value (vlax-get-property obj 'Coordinates))))
+  (setq z_val (if (vlax-property-available-p obj 'Elevation)
+                (vlax-get-property obj 'Elevation)
+                0.0))
+  
+  ;; 정점 리스트 생성
+  (setq pt_list '())
+  (setq i 0)
+  (while (< i (length coords))
+    (setq pt_list (append pt_list (list (list (nth i coords) (nth (+ i 1) coords) z_val))))
+    (setq i (+ i 2))
+  )
+  
+  ;; 각 세그먼트를 확인하여 target_x가 포함되는 세그먼트 찾기
+  (setq result_y nil)
+  (setq min_dist 1e99)
+  (setq i 0)
+  (setq n (- (length pt_list) 1))
+  
+  (while (< i n)
+    (setq pt1 (nth i pt_list))
+    (setq pt2 (nth (+ i 1) pt_list))
+    (setq x1 (car pt1))
+    (setq y1 (cadr pt1))
+    (setq x2 (car pt2))
+    (setq y2 (cadr pt2))
+    
+    ;; 돌출값(bulge) 가져오기
+    (setq bulge (vlax-curve-getBulge obj i))
+    
+    ;; target_x가 이 세그먼트의 X 범위에 포함되는지 확인
+    (if (and (<= (min x1 x2) target_x) (<= target_x (max x1 x2)))
+      (progn
+        (if (and bulge (not (equal bulge 0.0 0.0001)))
+          (progn
+            ;; 호(arc) 세그먼트 - 여러 점을 샘플링하여 가장 가까운 Y 찾기
+            (setq j 0)
+            (while (<= j 20)
+              (setq param (/ (float j) 20.0))
+              (setq test_pt (vlax-curve-getPointAtParam obj (+ i param)))
+              (setq test_pt (vlax-safearray->list test_pt))
+              (setq dist (abs (- (car test_pt) target_x)))
+              (if (< dist min_dist)
+                (progn
+                  (setq min_dist dist)
+                  (setq result_y (cadr test_pt))
+                )
+              )
+              (setq j (1+ j))
+            )
+          )
+          (progn
+            ;; 직선 세그먼트 - 선형 보간
+            (if (not (equal x1 x2 0.0001))
+              (setq result_y (+ y1 (* (- y2 y1) (/ (- target_x x1) (- x2 x1)))))
+              (setq result_y (/ (+ y1 y2) 2.0))
+            )
+          )
+        )
+      )
+    )
+    (setq i (1+ i))
+  )
+  
+  result_y
+)
+
 ;; 선택한 객체와 첫 번째 복사 객체 사이에 텍스트를 추가하는 함수
 (defun add-text-between-objects (top_obj bottom_obj text_string / 
                                   top_coords bottom_coords
                                   top_left top_right bottom_left bottom_right
-                                  top_center bottom_center mid_pt mid_x mid_y mid_z
-                                  min_x max_x min_y max_y angle deg_angle
-                                  orig_layer orig_color text_obj)
+                                  mid_pt mid_x mid_y mid_z
+                                  min_x max_x angle deg_angle
+                                  orig_layer orig_color top_y_at_midx bottom_y_at_midx)
   (princ (strcat "\n텍스트 삽입 시작: " text_string))
   
   (if (and top_obj bottom_obj)
@@ -338,7 +403,6 @@
       (setq min_x 1e99)
       (setq max_x -1e99)
       (foreach pt top_coords
-        ;; X 좌표 비교
         (if (< (car pt) min_x)
           (progn
             (setq min_x (car pt))
@@ -356,106 +420,14 @@
       ;; 텍스트 X 위치: 원본 객체의 양 끝점 중간
       (setq mid_x (/ (+ (car top_left) (car top_right)) 2.0))
       
-      ;; mid_x 위치에서 원본 객체와 교차하는 Y좌표 계산
-      ;; mid_x가 포함된 세그먼트를 찾아서 선형 보간
-      (setq top_y_at_midx nil)
-      (setq i 0)
-      (setq n (- (length top_coords) 1))
-      (while (and (< i n) (not top_y_at_midx))
-        (setq pt1 (nth i top_coords))
-        (setq pt2 (nth (+ i 1) top_coords))
-        (setq x1 (car pt1))
-        (setq y1 (cadr pt1))
-        (setq x2 (car pt2))
-        (setq y2 (cadr pt2))
-        
-        ;; mid_x가 이 세그먼트에 포함되는지 확인
-        (if (and (<= (min x1 x2) mid_x) (<= mid_x (max x1 x2)))
-          (progn
-            ;; 선형 보간
-            (if (not (equal x1 x2 0.0001))
-              (setq top_y_at_midx (+ y1 (* (- y2 y1) (/ (- mid_x x1) (- x2 x1)))))
-              (setq top_y_at_midx (/ (+ y1 y2) 2.0))
-            )
-          )
-        )
-        (setq i (+ i 1))
-      )
-      
-      ;; 못 찾았으면 양 끝점으로 폴백
-      (if (not top_y_at_midx)
-        (progn
-          (setq x1 (car top_left))
-          (setq y1 (cadr top_left))
-          (setq x2 (car top_right))
-          (setq y2 (cadr top_right))
-          (if (not (equal x1 x2 0.0001))
-            (setq top_y_at_midx (+ y1 (* (- y2 y1) (/ (- mid_x x1) (- x2 x1)))))
-            (setq top_y_at_midx (/ (+ y1 y2) 2.0))
-          )
-        )
-      )
+      ;; mid_x 위치에서 원본 객체와 교차하는 Y좌표 계산 (곡선 고려)
+      (setq top_y_at_midx (find-y-at-x top_obj mid_x))
       
       ;; 첫 복사본 객체의 정점 가져오기
       (setq bottom_coords (get-all-vertices bottom_obj))
       
-      ;; 첫 복사본의 양 끝점 찾기
-      (setq min_x 1e99)
-      (setq max_x -1e99)
-      (foreach pt bottom_coords
-        (if (< (car pt) min_x)
-          (progn
-            (setq min_x (car pt))
-            (setq bottom_left pt)
-          )
-        )
-        (if (> (car pt) max_x)
-          (progn
-            (setq max_x (car pt))
-            (setq bottom_right pt)
-          )
-        )
-      )
-      
-      ;; mid_x 위치에서 첫 복사본과 교차하는 Y좌표 계산
-      ;; mid_x가 포함된 세그먼트를 찾아서 선형 보간
-      (setq bottom_y_at_midx nil)
-      (setq i 0)
-      (setq n (- (length bottom_coords) 1))
-      (while (and (< i n) (not bottom_y_at_midx))
-        (setq pt1 (nth i bottom_coords))
-        (setq pt2 (nth (+ i 1) bottom_coords))
-        (setq x1 (car pt1))
-        (setq y1 (cadr pt1))
-        (setq x2 (car pt2))
-        (setq y2 (cadr pt2))
-        
-        ;; mid_x가 이 세그먼트에 포함되는지 확인
-        (if (and (<= (min x1 x2) mid_x) (<= mid_x (max x1 x2)))
-          (progn
-            ;; 선형 보간
-            (if (not (equal x1 x2 0.0001))
-              (setq bottom_y_at_midx (+ y1 (* (- y2 y1) (/ (- mid_x x1) (- x2 x1)))))
-              (setq bottom_y_at_midx (/ (+ y1 y2) 2.0))
-            )
-          )
-        )
-        (setq i (+ i 1))
-      )
-      
-      ;; 못 찾았으면 양 끝점으로 폴백
-      (if (not bottom_y_at_midx)
-        (progn
-          (setq x1 (car bottom_left))
-          (setq y1 (cadr bottom_left))
-          (setq x2 (car bottom_right))
-          (setq y2 (cadr bottom_right))
-          (if (not (equal x1 x2 0.0001))
-            (setq bottom_y_at_midx (+ y1 (* (- y2 y1) (/ (- mid_x x1) (- x2 x1)))))
-            (setq bottom_y_at_midx (/ (+ y1 y2) 2.0))
-          )
-        )
-      )
+      ;; mid_x 위치에서 첫 복사본과 교차하는 Y좌표 계산 (곡선 고려)
+      (setq bottom_y_at_midx (find-y-at-x bottom_obj mid_x))
       
       ;; 텍스트 Y 위치: 두 교차점의 평균
       (setq mid_y (/ (+ top_y_at_midx bottom_y_at_midx) 2.0))
@@ -487,8 +459,6 @@
                ))
       
       (princ (strcat "\n텍스트 생성 완료 - 레이어: " orig_layer ", 색상: " (itoa orig_color)))
-      
-      (princ (strcat "\n텍스트 레이어: " orig_layer ", 색상: " (itoa orig_color)))
       (princ "\n텍스트 삽입 완료")
     )
     (princ "\n오류: 객체가 nil입니다")
