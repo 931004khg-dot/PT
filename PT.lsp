@@ -310,9 +310,14 @@
 )
 
 ;; 수직선과 LWPOLYLINE의 교차점을 찾는 함수 (곡선 포함)
-(defun find-y-at-x (obj target_x / coords pt_list i n pt1 pt2 x1 y1 x2 y2 
-                     bulge theta radius center_x center_y start_angle end_angle
-                     test_y result_y min_dist dist test_pt z_val)
+(defun find-y-at-x (obj target_x / ent_data coords pt_list bulge_list i n pt1 pt2 x1 y1 x2 y2 
+                     bulge test_y result_y min_dist dist test_pt z_val 
+                     start_param end_param num_samples sample_pt j)
+  
+  ;; VLA 객체에서 엔티티 이름 가져오기
+  (setq ent (vlax-vla-object->ename obj))
+  (setq ent_data (entget ent))
+  
   ;; 정점 좌표 가져오기
   (setq coords (vlax-safearray->list (vlax-variant-value (vlax-get-property obj 'Coordinates))))
   (setq z_val (if (vlax-property-available-p obj 'Elevation)
@@ -325,6 +330,30 @@
   (while (< i (length coords))
     (setq pt_list (append pt_list (list (list (nth i coords) (nth (+ i 1) coords) z_val))))
     (setq i (+ i 2))
+  )
+  
+  ;; DXF 데이터에서 돌출값(bulge) 리스트 추출
+  (setq bulge_list '())
+  (foreach item ent_data
+    (if (= (car item) 42)
+      (setq bulge_list (append bulge_list (list (cdr item))))
+    )
+  )
+  
+  ;; bulge 리스트가 비어있으면 0으로 채우기
+  (if (null bulge_list)
+    (progn
+      (setq i 0)
+      (while (< i (length pt_list))
+        (setq bulge_list (append bulge_list (list 0.0)))
+        (setq i (1+ i))
+      )
+    )
+  )
+  
+  ;; bulge 리스트 길이가 부족하면 0으로 채우기
+  (while (< (length bulge_list) (length pt_list))
+    (setq bulge_list (append bulge_list (list 0.0)))
   )
   
   ;; 각 세그먼트를 확인하여 target_x가 포함되는 세그먼트 찾기
@@ -342,24 +371,27 @@
     (setq y2 (cadr pt2))
     
     ;; 돌출값(bulge) 가져오기
-    (setq bulge (vlax-curve-getBulge obj i))
+    (setq bulge (nth i bulge_list))
     
     ;; target_x가 이 세그먼트의 X 범위에 포함되는지 확인
     (if (and (<= (min x1 x2) target_x) (<= target_x (max x1 x2)))
       (progn
         (if (and bulge (not (equal bulge 0.0 0.0001)))
           (progn
-            ;; 호(arc) 세그먼트 - 여러 점을 샘플링하여 가장 가까운 Y 찾기
+            ;; 호(arc) 세그먼트 - vlax-curve-getPointAtParam 사용
+            (setq start_param (vlax-curve-getParamAtPoint obj (vlax-3d-point pt1)))
+            (setq end_param (vlax-curve-getParamAtPoint obj (vlax-3d-point pt2)))
+            (setq num_samples 20)
             (setq j 0)
-            (while (<= j 20)
-              (setq param (/ (float j) 20.0))
-              (setq test_pt (vlax-curve-getPointAtParam obj (+ i param)))
-              (setq test_pt (vlax-safearray->list test_pt))
-              (setq dist (abs (- (car test_pt) target_x)))
+            (while (<= j num_samples)
+              (setq param (+ start_param (* (/ (float j) num_samples) (- end_param start_param))))
+              (setq sample_pt (vlax-curve-getPointAtParam obj param))
+              (setq sample_pt (vlax-safearray->list sample_pt))
+              (setq dist (abs (- (car sample_pt) target_x)))
               (if (< dist min_dist)
                 (progn
                   (setq min_dist dist)
-                  (setq result_y (cadr test_pt))
+                  (setq result_y (cadr sample_pt))
                 )
               )
               (setq j (1+ j))
