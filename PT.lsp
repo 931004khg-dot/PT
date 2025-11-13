@@ -379,8 +379,8 @@
         (if (and bulge (not (equal bulge 0.0 0.0001)))
           (progn
             ;; 호(arc) 세그먼트 - vlax-curve-getPointAtParam 사용
-            (setq start_param (vlax-curve-getParamAtPoint obj (vlax-3d-point pt1)))
-            (setq end_param (vlax-curve-getParamAtPoint obj (vlax-3d-point pt2)))
+            (setq start_param (vlax-curve-getParamAtPoint obj (vlax-3d-point (list x1 y1 z_val))))
+            (setq end_param (vlax-curve-getParamAtPoint obj (vlax-3d-point (list x2 y2 z_val))))
             (setq num_samples 20)
             (setq j 0)
             (while (<= j num_samples)
@@ -497,6 +497,6 @@
   )
 )
 
-(princ "\n객체 복사 프로그램이 로드되었습니다.")
+(princ "\n포장 TYPE 프로그램이 로드되었습니다.")
 (princ "\n명령어: PT")
 (princ)
