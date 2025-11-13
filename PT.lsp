@@ -316,7 +316,9 @@
                                   temp_line_pt1 temp_line_pt2 temp_line vertical_line
                                   vert_pt1 vert_pt2 ss_trim trimmed_line
                                   line_start line_end mid_y mid_z angle
-                                  orig_layer orig_color old_osmode)
+                                  orig_layer orig_color old_osmode
+                                  test_point_top test_point_bottom top_intersect bottom_intersect
+                                  top_y bottom_y)
   (princ (strcat "\n텍스트 삽입 시작: " text_string))
   
   (if (and top_obj bottom_obj)
@@ -381,8 +383,12 @@
       
       (princ (strcat "\n[DEBUG] 원본 객체 교차점: " (vl-princ-to-string top_intersect)))
       
+      ;; 첫 복사본의 좌표 가져오기
+      (setq bottom_coords (get-all-vertices bottom_obj))
+      (setq bottom_left (car bottom_coords))  ; 첫 번째 점을 기준으로
+      
       ;; 첫 복사본과의 교차점 찾기
-      (setq test_point_bottom (list mid_x (- (cadr top_left) distance) mid_z))
+      (setq test_point_bottom (list mid_x (cadr bottom_left) mid_z))
       (setq bottom_intersect (vlax-curve-getClosestPointTo bottom_obj test_point_bottom))
       
       (princ (strcat "\n[DEBUG] 첫 복사본 교차점: " (vl-princ-to-string bottom_intersect)))
