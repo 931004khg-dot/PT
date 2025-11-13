@@ -354,7 +354,7 @@
       (setq mid_x (/ (+ (car top_left) (car top_right)) 2.0))
       (setq mid_z (/ (+ (caddr top_left) (caddr top_right)) 2.0))
       
-      ;; 1. 임시 가로선 생성 (왼쪽 끝점 - 오른쪽 끝점)
+      ;; 1. 임시 가로선 생성 (왼쪽 끝점 - 오른쪽 끝점) - 디버그용
       (setq temp_line_pt1 (list (car top_left) (cadr top_left) mid_z))
       (setq temp_line_pt2 (list (car top_right) (cadr top_right) mid_z))
       (setq temp_line (entmakex (list
@@ -363,7 +363,7 @@
                                   (cons 11 temp_line_pt2)
                                 )))
       
-      ;; 2. 세로선 생성 (중간 X 좌표, 충분히 긴 길이)
+      ;; 2. 세로선 생성 (중간 X 좌표, 충분히 긴 길이) - 디버그용
       (setq vert_pt1 (list mid_x (+ (cadr top_left) 1.0) mid_z))
       (setq vert_pt2 (list mid_x (- (cadr top_left) 1.0) mid_z))
       (setq vertical_line (entmakex (list
@@ -372,45 +372,37 @@
                                       (cons 11 vert_pt2)
                                     )))
       
-      ;; 3. TRIM 명령 실행 - 1단계: 원본으로 세로선 윗부분 자르기
-      (princ "\n[DEBUG] TRIM 1단계: 원본으로 윗부분 자르기...")
-      (command "_.TRIM" 
-               (vlax-vla-object->ename top_obj)
-               ""
-               vertical_line
-               "")
+      ;; 3. 원본 객체와 세로선의 교차점 찾기 (vlax-curve 함수 사용)
+      (princ "\n[DEBUG] 교차점 계산 중...")
       
-      ;; 4. TRIM 명령 실행 - 2단계: 첫 복사본으로 세로선 아랫부분 자르기
-      (princ "\n[DEBUG] TRIM 2단계: 첫 복사본으로 아랫부분 자르기...")
-      (command "_.TRIM" 
-               (vlax-vla-object->ename bottom_obj)
-               ""
-               (entlast)
-               "")
+      ;; 중간 X 좌표에서 가장 가까운 점 찾기 (원본 객체)
+      (setq test_point_top (list mid_x (cadr top_left) mid_z))
+      (setq top_intersect (vlax-curve-getClosestPointTo top_obj test_point_top))
       
-      ;; 5. 남은 세로선 찾기 (2단계 TRIM 후)
-      (setq trimmed_line (entlast))
-      (princ (strcat "\n[DEBUG] 최종 Trimmed line: " (if trimmed_line (vl-princ-to-string trimmed_line) "nil")))
+      (princ (strcat "\n[DEBUG] 원본 객체 교차점: " (vl-princ-to-string top_intersect)))
       
-      ;; 6. 세로선의 시작점과 끝점 가져오기
-      (if trimmed_line
+      ;; 첫 복사본과의 교차점 찾기
+      (setq test_point_bottom (list mid_x (- (cadr top_left) distance) mid_z))
+      (setq bottom_intersect (vlax-curve-getClosestPointTo bottom_obj test_point_bottom))
+      
+      (princ (strcat "\n[DEBUG] 첫 복사본 교차점: " (vl-princ-to-string bottom_intersect)))
+      
+      ;; 4. 두 교차점의 중간 Y 좌표 계산
+      (if (and top_intersect bottom_intersect)
         (progn
-          (setq line_start (cdr (assoc 10 (entget trimmed_line))))
-          (setq line_end (cdr (assoc 11 (entget trimmed_line))))
+          (setq top_y (cadr top_intersect))
+          (setq bottom_y (cadr bottom_intersect))
+          (setq mid_y (/ (+ top_y bottom_y) 2.0))
           
-          (princ (strcat "\n[DEBUG] Line start: " (vl-princ-to-string line_start)))
-          (princ (strcat "\n[DEBUG] Line end: " (vl-princ-to-string line_end)))
+          (princ (strcat "\n[DEBUG] 원본 Y: " (rtos top_y 2 4)))
+          (princ (strcat "\n[DEBUG] 복사본 Y: " (rtos bottom_y 2 4)))
+          (princ (strcat "\n[DEBUG] 텍스트 Y (중간): " (rtos mid_y 2 4)))
           
-          ;; 7. 세로선의 중간점 계산
-          (setq mid_y (/ (+ (cadr line_start) (cadr line_end)) 2.0))
-          
-          (princ (strcat "\n[DEBUG] Text Y: " (rtos mid_y 2 4)))
-          
-          ;; 8. 원본 객체의 기울기 계산
+          ;; 5. 원본 객체의 기울기 계산
           (setq angle (atan (- (cadr top_right) (cadr top_left))
                             (- (car top_right) (car top_left))))
           
-          ;; 9. 텍스트 생성
+          ;; 6. 텍스트 생성
           (entmake (list
                      (cons 0 "TEXT")
                      (cons 8 orig_layer)
@@ -424,17 +416,13 @@
                      (cons 73 2)
                    ))
           
-          ;; 10. 세로선 삭제 (디버그용으로 주석 처리)
-          ;(entdel trimmed_line)
-          
           (princ "\n[DEBUG] 텍스트 삽입 완료 - 임시선 유지됨")
         )
-        (princ "\n오류: 2단계 TRIM 후 세로선을 찾을 수 없습니다")
+        (princ "\n오류: 교차점을 찾을 수 없습니다")
       )
       
-      ;; 11. 임시 가로선 삭제 (디버그용으로 주석 처리)
-      ;(entdel temp_line)
-      (princ "\n[DEBUG] 임시 가로선 유지됨")
+      ;; 7. 임시 선들 삭제하지 않음 (디버그용)
+      (princ "\n[DEBUG] 임시 선들(가로선, 세로선) 유지됨")
       
       ;; OSNAP 복원
       (setvar "OSMODE" old_osmode)
